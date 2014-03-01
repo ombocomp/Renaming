@@ -6,67 +6,71 @@ import Control.Monad
 import Control.Arrow
 import Data.Maybe
 import Data.List
-import Data.Monoid
-import Data.Renaming
+import Control.Monad.FunctionGraph
 import System.IO
 import System.FilePath (combine, splitExtensions)
 import Text.Read
 import qualified Algorithms.NaturalSort as NS (compare)
 
--- |Strips the extension from a file.
---  History effect: @xs --> extension:filename:xs@
-stripExtension :: Renaming String
-stripExtension = Renaming stripExt
-   where stripExt (p,xs) = (name, ext:p:xs)
-            where (name, ext) = splitExtensions p
+isRight :: Either a b -> Bool
+isRight (Right _) = True
+isRight _ = False
 
--- |Adds the extension back to a file, provided it's
---  in the history.
---  History effect: @[] --> [fileName]@ (if the history is empty)
---  or @xs --> filename:xs@.
-addExtension :: Renaming String
-addExtension = Renaming f
-   where f (p, []) = (p, [p])
-         f (p, x:xs) = (p++x, p:x:xs)
+fromRight :: Either a b -> b
+fromRight (Right x) = x
+
+splitExt :: Splitter (Either String) FilePath FilePath FilePath
+splitExt = liftP splitExtensions
+addExt :: Merger (Either String) FilePath FilePath FilePath
+addExt = liftP (uncurry (++))
 
 -- |Returns True iff the filename can be parsed as an Integer.
-isInteger :: (FilePath, a) -> Bool
-isInteger (p,_) = isJust (readMaybe p::Maybe Integer)
+isInteger :: String -> Bool
+isInteger = isJust . (readMaybe :: String -> Maybe Integer)
 
--- |Interprets the filename as an integer and applies a function
---  to it.
---  History effect: none.
-mapInt :: (Integer -> Integer) -> Renaming a
-mapInt f = guardR isInteger mapInt'
-   where mapInt' = simpleR (show . fromJust . liftM f . readMaybe)
+-- |Interprets the filename as an integer and applies a function to it.
+mapInt :: (Integer -> Integer) -> Pipe (Either String) String String
+mapInt f = splitExt <> (isInteger ?? f', liftP id) >< addExt
+  where f' = liftP $ show . f . read
 
--- |Applies a renaming to a filename, returning the old and new names.
-applyRenaming :: Renaming a -> FilePath -> (FilePath, FilePath)
-applyRenaming r p = (p, finishR r (p, mempty))
+-- |Applies a function to a file's extension
+mapExt :: Pipe (Either String) String String
+       -> Pipe (Either String) String String 
+mapExt p = splitExt <> (liftP id, p) >< addExt
+
+-- |Applies a parPipe to a set of filenames.
+applyRenamings :: ParPipe (Either String) FilePath FilePath
+              -> [FilePath]
+              -> [(FilePath, FilePath)]
+applyRenamings p xs =
+  case p xs of Left _ -> []
+               Right xs' -> filter (uncurry (/=))
+                            $ map (second fromRight)
+                            $ filter (isRight . snd)
+                            $ xs `zip` xs'
 
 -- |Performs a series of file renamings. The first component of each
 --  tuple is the current filename, the second is the new one.
 renameFiles :: [(FilePath, FilePath)] -> IO ()
-renameFiles files = do
-   let temp = flip (++) ".move" 
-   files' <- filterM (\(x,y) -> liftM ((x/=y) &&) (doesFileExist x)) files
-   mapM_ (\(x,_) -> renameFile x (temp x)) files'
-   mapM_ (\(x,y) -> renameFile (temp x) y) files'
+renameFiles files =
+  do let temp = flip (++) ".move"
+     files' <- filterM (doesFileExist . fst) files
+     mapM_ (\(x,_) -> renameFile x (temp x)) files'
+     mapM_ (\(x,y) -> renameFile (temp x) y) files'
 
 main :: IO ()
 main =
    let print' n (old, new) = putStrLn $ padRight n old ++ " --> " ++ new  in
    do dir <- askForBy "Enter directory name: " "Directory not found!" doesDirectoryExist
-      files'' <- getDirectoryContents dir
-      files' <- filterM (doesFileExist . combine dir) files''
-      let files = sortBy (NS.compare) files'
+      files' <- getDirectoryContents dir
+      let files = sortBy NS.compare files'
       amount <- askFor "Enter amount: " "Integer required!"
-      let f = stripExtension <> mapInt (+amount) <> addExtension
-          renamings = map (applyRenaming f) files
+      let f = liftPar $ mapInt (+amount)
+          renamings = applyRenamings f files
           addDir = combine dir *** combine dir
           maxNameLength = maximum $ map length files
       putStrLn "Proposed renamings: "
-      mapM_ (print' maxNameLength) $ renamings
+      mapM_ (print' maxNameLength) renamings
       proceed <- askFor "Proceed (True/False)? " "True/False required!"
       if proceed then renameFiles (map addDir renamings) >> putStrLn "Finished."
       else putStrLn "Exiting without action."
