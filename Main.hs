@@ -1,4 +1,4 @@
--- |A console-based program which
+-- |A console-based program which renames files in a directory.
 module Main where
 
 import System.Directory

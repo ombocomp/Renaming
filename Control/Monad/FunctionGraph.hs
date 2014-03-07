@@ -9,6 +9,7 @@ module Control.Monad.FunctionGraph (
   -- * Lifting & composing functions
   liftP,
   (>=>),
+  (<=<),
 
   -- * Splitting inputs
   (<>),
@@ -59,9 +60,8 @@ module Control.Monad.FunctionGraph (
   ) where
 
 import Control.Monad(MonadPlus(..))
-import Control.Monad.Error ((>=>))
+import Control.Monad.Error ((>=>), (<=<))
 import Control.Arrow
-import Control.Applicative
 
 -- |A basic (monadic) function.
 type Pipe m a b = a -> m b
@@ -214,5 +214,4 @@ copy5 =  liftP (\x -> (x,x,x,x,x))
 
 -- |Switches the outputs of a splitter.
 switch :: Monad m => Splitter m a b c -> Splitter m a c b
-switch = (flip (>=>)) $ liftP (\(x,y) -> (y,x))
-
+switch = (<=<) $ liftP (\(x,y) -> (y,x))
