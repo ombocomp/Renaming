@@ -30,6 +30,7 @@ module Control.Monad.FunctionGraph (
   (><),
 
   -- * Executing functions in parallel
+  mapPar,
   liftPar,
   (=|>),
 
@@ -159,10 +160,16 @@ liftP = (return .)
 
 -- |Lifts a pipe to a parPipe - applies the pipe to all
 --  elements of a list in parallel.
+mapPar :: Monad m
+       => Pipe m a b
+       -> ParPipe m a b
+mapPar p = return . map p
+
+-- |Lifts a pipe from @[a]@ to @[b]@ to a parPipe.
 liftPar :: Monad m
-        => Pipe m a b
+        => ([a] -> [b])
         -> ParPipe m a b
-liftPar p = return . map p
+liftPar f = return . map return . f
 
 -- |Concatenates two parPipes.
 --  If the first fails globally, the concatenated parPipe
