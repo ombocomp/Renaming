@@ -10,14 +10,14 @@ module Data.Renaming (
    sortBy,
 
    -- ** Extensions
+   mapName,
    splitExt,
    addExt,
    mapExt,
 
    -- ** Data types and numbers
    isInteger,
-   isNumber,
-   isDateTime
+   isDouble
 
    ) where
 
@@ -53,10 +53,18 @@ addExt = liftP (uncurry (++))
 isInteger :: String -> Bool
 isInteger = isJust . (readMaybe :: String -> Maybe Integer)
 
+-- |Returns True iff the filename can be parsed as a Double.
+isDouble :: String -> Bool
+isDouble = isJust . (readMaybe :: String -> Maybe Double)
+
 -- |Interprets the filename as an integer and applies a function to it.
 mapInt :: (Integer -> Integer) -> Pipe (Either String) String String
 mapInt f = splitExt <> (isInteger ?? f', liftP id) >< addExt
   where f' = liftP $ show . f . read
+
+-- |Applies a function to a file's name (leaves the extension intact).
+mapName :: (String -> String) -> Pipe (Either String) String String
+mapName f = splitExt <> (liftP f, liftP id) >< addExt
 
 -- |Applies a function to a file's extension
 mapExt :: Pipe (Either String) String String
@@ -67,7 +75,7 @@ mapExt p = splitExt <> (liftP id, p) >< addExt
 --  size, etc.).
 addInfo :: (FilePath -> IO a)
         -> Splitter (Either String) FilePath FilePath (IO a)
-addInfo f = liftP $ (id &&& f)
+addInfo f = liftP (id &&& f)
 
 -- |Sorts a list of filenames.
 sortBy :: (a -> a -> Ordering)

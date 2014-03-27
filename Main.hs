@@ -5,7 +5,7 @@ import System.Directory
 import Control.Monad
 import Control.Arrow
 import Data.Maybe
-import Data.List
+import qualified Data.List as LS
 import Control.Monad.FunctionGraph
 import Data.Renaming
 import System.IO
@@ -20,15 +20,16 @@ main =
    let print' n (old, new) = putStrLn $ padRight n old ++ " --> " ++ new  in
    do dir <- askForBy "Enter directory name: " "Directory not found!" doesDirectoryExist
       files' <- getDirectoryContents dir
-      let files = sortBy NS.compare files'
-      amount <- askFor "Enter amount: " "Integer required!"
-      let f = liftPar $ mapInt (+amount)
-          renamings = applyRenamings f files
-          addDir = combine dir *** combine dir
-          maxNameLength = maximum $ map length files
+      let files = LS.sortBy NS.compare files'
+      pipeName <- askForBy "Enter pipe name: " "Pipe not found!" (return .
+                                                                  isJust .
+                                                                  flip lookup pipeLib)
+      let pipe = fromJust $ lookup pipeName pipeLib
+      renamings <- pipe files
       putStrLn "Proposed renamings: "
-      mapM_ (print' maxNameLength) renamings
+      mapM_ (print' (maximum $ map length files)) renamings
       proceed <- askFor "Proceed (True/False)? " "True/False required!"
+      let addDir = combine dir *** combine dir
       if proceed then renameFiles (map addDir renamings) >> putStrLn "Finished."
       else putStrLn "Exiting without action."
 
@@ -59,3 +60,13 @@ askForBy prompt err check = do
 
 padRight :: Int -> String -> String
 padRight n xs = xs ++ replicate (n - length xs) ' '
+
+pipeLib :: [(String, [String] -> IO [(String, String)])]
+pipeLib = [
+   ("addN", \files ->
+      do amount <- askFor "Enter amount: " "Integer required!"
+         let f = mapPar $ mapInt (+amount)
+         return $ applyRenamings f files),
+   ("renameCD", \files ->
+      return $ applyRenamings (mapPar $ mapName (take 2)) files)
+   ]
