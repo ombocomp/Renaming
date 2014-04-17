@@ -35,7 +35,7 @@ import Control.Monad.Trans.Either
 import Control.Monad
 import Control.Arrow
 import Data.Maybe
-import System.FilePath (splitExtensions)
+import System.FilePath (splitExtension)
 import Text.Read
 
 --import qualified Algorithms.NaturalSort as NS (compare)
@@ -79,10 +79,10 @@ mkEitherT :: Monad m
 mkEitherT f x = EitherT $ liftM Right (f x)
 
 -- |Splits a file into filename and extension (the extension is
---  taken to start at the first dot (.) ).
+--  taken to start at the LAST dot.
 splitExt :: Monad m
          => Splitter (EitherT String m) FilePath FilePath FilePath
-splitExt = liftP splitExtensions
+splitExt = liftP splitExtension
 
 -- |Merges a file and its extension together.
 addExt :: Monad m => Merger (EitherT String m) FilePath FilePath FilePath

@@ -81,7 +81,13 @@ pipeLib = [
                       =|> mapPar (splitExt >< liftP snd)
                       =|> addInfoG (map show ([1..]::[Integer]))
                       =|> mapPar (liftP $ \(e,n) -> (n++e))
-         applyRenamings sorter files)
+         applyRenamings sorter files),
+   ("enumerate", \dir files ->
+      do start <- askFor "Enter start value (Integer): " "Start value required!" :: IO Integer
+         let f = mapPar (splitExt >< liftP snd)
+                 =|> addInfoG [start..]
+                 =|> mapPar (switch idP <> (liftP show, liftP id) >< addExt)
+         applyRenamings f files)
    ]
 
 

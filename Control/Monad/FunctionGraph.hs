@@ -13,6 +13,7 @@ module Control.Monad.FunctionGraph (
    liftP,
    (>=>),
    (<=<),
+   idP,
 
    -- * Splitting inputs
    (<>),
@@ -92,6 +93,10 @@ type ParPipe m a b c = [(a,b)] -> m [(a, m c)]
 -- |Wraps the return value of a function into a monad.
 liftP :: Monad m => (a -> b) -> Pipe m a b
 liftP = (return .)
+
+-- |The identity pipe.
+idP :: Monad m => Pipe m a a
+idP = liftP id
 
 -- |Splits an input into two parts and gives each to a handler.
 (<>) :: Monad m
