@@ -37,6 +37,7 @@ import Control.Arrow
 import Data.Maybe
 import System.FilePath (splitExtensions)
 import Text.Read
+
 --import qualified Algorithms.NaturalSort as NS (compare)
                               
 
@@ -123,13 +124,13 @@ addInfoM f = liftP (id &&& f)
 
 -- |Adds some global information to a list of filenames
 --  (such as a numbering).
-addInfoG :: (Monad m, Eq b)
+addInfoG :: (Monad m)
              => [c]
              -> ParPipe (EitherT String m) a b (b, c)
 addInfoG xs = liftPar' (`zip` xs)
 
 -- |Sorts a list of filenames.
-sortBy :: (Monad m, Eq b)
+sortBy :: (Monad m)
        => (b -> b -> Ordering)
        -> ParPipe (EitherT String m) a b b
 sortBy f = liftPar' (LS.sortBy f)

@@ -9,56 +9,60 @@
 -}
 module Control.Monad.FunctionGraph (
 
-  -- * Lifting & composing functions
-  liftP,
-  (>=>),
-  (<=<),
+   -- * Lifting & composing functions
+   liftP,
+   (>=>),
+   (<=<),
 
-  -- * Splitting inputs
-  (<>),
-  (<>*),
+   -- * Splitting inputs
+   (<>),
+   (<>*),
 
-  -- ** Convenience functions
-  copy,
-  flattenP,
-  switch,
+   -- ** Convenience functions
+   copy,
+   flattenP,
+   switch,
 
-  -- * Merging outputs
-  (><),
+   -- * Merging outputs
+   (><),
 
-  -- * Executing functions in parallel
-  mapPar,
-  liftPar,
-  liftPar',
-  (=|>),
+   -- * Executing functions in parallel
+   mapPar,
+   (=|>),
 
-  -- * Guards
-  guard,
-  (??),
-  failIf,
-  checkThat,
+   -- ** History-preserving lists
+   liftPar,
+   liftPar',
 
-  -- ** Guard with messages
-  failIfEither,
+   -- ** History-erasing lifts
+   liftParErase,
+   liftParErase',
 
-  -- * Type synonims for common pieces
-  Pipe,
-  ParPipe,
+   -- * Guards
+   guard,
+   (??),
+   failIf,
+   checkThat,
 
-  -- ** Splitters
-  Splitter,
-  ManySplitter,
+   -- ** Guard with messages
+   failIfEither,
 
-  -- ** Mergers
-  Merger,
-  ManyMerger
-  ) where
+   -- * Type synonyms for common pieces
+   Pipe,
+   ParPipe,
+
+   -- ** Splitters
+   Splitter,
+   ManySplitter,
+
+   -- ** Mergers
+   Merger,
+   ManyMerger
+   ) where
 
 import Control.Monad(MonadPlus(..), liftM)
 import Control.Monad.Error ((>=>), (<=<))
 import Control.Arrow
-import Data.List (find)
-import Data.Maybe (fromJust)
 import Control.Monad.MonadFilter
 import Control.Monad.Trans.Either
 
@@ -120,21 +124,53 @@ mapPar :: Monad m
        -> ParPipe m a b c
 mapPar p = return . map (second p)
 
--- |Lifts a pipe from @[a]@ to @[(a,b)]@
---  (where the result consists of input-output-pairs)
---  to a parPipe.
-liftPar :: (Monad m, Eq b)
+-- |Lifts a function 'f : [b] -> [(b,c)]'
+--  (where the result consists of input-output-pairs) to a parPipe.
+--  'f' has to preserve the order of the elements of its input-list,
+--  i.e xs !! i must be mapped 1:1 to a pair f xs !! i.
+liftPar :: (Monad m)
         => ([b] -> [(b,c)])
         -> ParPipe m a b c
-liftPar f xs = return . match . map (second return) . f . snd . unzip $ xs
-   where match = map (first findInput)
-         findInput x = fst $ fromJust $ find (\(_,b) -> b == x) xs
+liftPar f xs = return
+               . zipWith (\(a,_) (_,c) -> (a,c)) xs
+               . map (second return)
+               . f
+               . snd
+               . unzip
+               $ xs
 
--- |Lifts a pipe from @[a]@ to @[b]@ to a parPipe.
-liftPar' :: (Monad m, Eq b)
+-- |Lifts a function 'f: [a] -> [b]'' to a parPipe.
+--  'f' has to preserve the order of the elements in its input-list,
+--  i.e. xs !! i must be mapped 1:1 to f xs !! i.
+liftPar' :: (Monad m)
          => ([b] -> [c])
          -> ParPipe m a b c
 liftPar' f = liftPar $ uncurry zip . (id &&& f)
+
+-- |Lifts a function 'f : [a] -> [(a,c)]'
+--  (where the result consists of input-output-pairs) to a parPipe.
+--  'f' has to preserve the order of the elements of its input-list,
+--  i.e xs !! i must be mapped 1:1 to a pair f xs !! i.
+--
+--  Whereas @liftPar@, for each input pair '(A,B)', a pipe made with
+--  @liftPar@ creates an output pair '(A,m C)', liftParErase creates
+--  an output pair '(B,m C)'. Since 'A' corresponds to the input
+--  of a previous pipe and 'B' to its ouput, liftParErase \'erases
+--  history' by outputting 'B' instead of 'A'.
+liftParErase :: Monad m
+             => ([a] -> [(a,b)])
+             -> ParPipe m a a b
+liftParErase f xs = return . map (second return) . f . snd . unzip $ xs
+
+-- |Lifts a function 'f: [a] -> [b]'' to a parPipe.
+--  'f' has to preserve the order of the elements in its input-list,
+--  i.e. xs !! i must be mapped 1:1 to f xs !! i.
+-- 
+-- History-erasing version of @liftPar'@.
+liftParErase' :: (Monad m)
+         => ([a] -> [b])
+         -> ParPipe m a a b
+liftParErase' f = liftParErase $ uncurry zip . (id &&& f)
 
 -- |Concatenates two parPipes.
 --  If the first fails globally, the concatenated parPipe

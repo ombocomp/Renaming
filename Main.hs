@@ -1,5 +1,5 @@
 -- |A console-based program which renames files in a directory.
-module Main where
+module Main (main) where
 
 import System.Directory
 import Control.Monad
@@ -13,6 +13,10 @@ import System.IO
 import System.FilePath (combine)
 import Text.Read
 import qualified Algorithms.NaturalSort as NS (compare)
+
+import Control.Monad.Trans.Either
+
+data Asc = Asc | Desc deriving (Show, Eq, Ord, Read, Enum)
 
 main :: IO ()
 main =
@@ -67,12 +71,28 @@ pipeLib = [
          applyRenamings f files),
    ("renameCD", const $ applyRenamings (mapPar $ mapName (take 2))),
    ("sortByDate", \dir files ->
-      do let modtime x = getModificationTime (combine dir x)
-         let sorter = mapPar (addInfoM modtime >=> flattenET)
-                      =|> sortBy (comparing snd)
+      do asc <- askFor "Enter direction (Asc/Desc):" "Asc/Desc required!"
+         let cmp = if asc == Asc then id else flip
+             modtime x = getModificationTime (combine dir x)
+             sorter = mapPar (addInfoM modtime >=> flattenET)
+                      =|> sortBy (cmp $ comparing snd)
                       =|> mapPar (liftP fst)
+                      =|> liftParErase' id
                       =|> mapPar (splitExt >< liftP snd)
                       =|> addInfoG (map show ([1..]::[Integer]))
                       =|> mapPar (liftP $ \(e,n) -> (n++e))
          applyRenamings sorter files)
    ]
+
+
+-- For testing
+
+-- |Runs a ParPipe and prints its results.
+runP :: (Show a, Show c) => ParPipe (EitherT String IO) a b c -> [(a,b)] -> IO ()
+runP p xs = do (Right xs') <- runEitherT $ p xs
+               mapM_ (f >=> print) xs'
+  where f (a,b) = runEitherT b >>= \(Right b') -> return (a,b')
+
+-- |Fixes a pipe's monad to 'EitherT String IO' (for testing)
+eitherP :: ParPipe (EitherT String IO) a b c -> ParPipe (EitherT String IO) a b c
+eitherP = id
