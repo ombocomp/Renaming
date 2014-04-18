@@ -4,6 +4,8 @@ import Control.Exception (catch, SomeException)
 import Control.Monad hiding (mfilter)
 import Control.Monad.Error hiding (mfilter)
 import Control.Monad.Trans.Either
+import Data.Maybe (catMaybes)
+import Data.Either (rights)
 import Data.Monoid
 
 -- |Monadic filters which can filter
@@ -11,7 +13,7 @@ import Data.Monoid
 --  Minimal complete definition: 'mfilter'
 --  MonadFilter laws:
 
---  1. mfold xs = [x | x <- xs, x /= mzero]
+--  1. mfilter xs = [x | x <- xs, x /= mzero]
 --  2. ismzero x iff mfold [x] is null 
 class MonadPlus m => MonadFilter m where
    -- |Iterates over a list of monadic values, discarding
@@ -29,19 +31,13 @@ class MonadPlus m => MonadFilter m where
             head' (x:_) = Just x
 
 instance MonadFilter Maybe where
-   mfilter [] = return []
-   mfilter (Nothing:xs) = mfilter xs
-   mfilter (Just x:xs) = liftM (x:) $ mfilter xs
+   mfilter = return . catMaybes
 
 instance MonadFilter [] where
-   mfilter [] = return []
-   mfilter ([]:xs) = mfilter xs
-   mfilter (x:xs) = liftM (x++) $ mfilter xs
+   mfilter = filter (not . null)
 
 instance Error a => MonadFilter (Either a) where
-   mfilter [] = return []
-   mfilter (Left _:xs) = mfilter xs
-   mfilter (Right x:xs) = liftM (x:) $ mfilter xs
+   mfilter = return . rights
 
 instance MonadFilter IO where
    mfilter [] = return []
