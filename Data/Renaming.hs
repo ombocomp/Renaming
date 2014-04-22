@@ -44,9 +44,12 @@ import Text.Read
 -- |Flattens a value '(b, m c)' into 'EitherT String m (b, c)', bringing
 --  the monadic component out of the tuple. Useful when previous
 --  pipes added monadic components like file sizes or timestamps.
+--  
+--  This function is similar to @flattenP@, but is intended for
+--  monad transformers.
 flattenET :: (Monad m)
           => Pipe (EitherT String m) (b, m c) (b, c)
-flattenET (x,y) = EitherT $ liftM (Right . (x,)) y
+flattenET = Kleisli $ \(x,y) -> EitherT $ liftM (Right . (x,)) y
 
 -- |Returns True iff the Either-object has a right value.
 isRight :: Either a b -> Bool

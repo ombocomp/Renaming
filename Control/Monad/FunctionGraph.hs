@@ -68,18 +68,18 @@ import Control.Monad.MonadFilter
 import Control.Monad.Trans.Either
 
 -- |A basic (monadic) function.
-type Pipe m a b = a -> m b
+type Pipe m a b = Kleisli m a b
 
 -- |A function with two outputs.
-type Splitter m a b c = a -> m (b,c)
+type Splitter m a b c = Kleisli m a (b,c)
 -- |A function with three outputs.
-type ManySplitter m a b = a -> m [b]
+type ManySplitter m a b = Kleisli m a [b]
 
 -- |A function with two inputs.
-type Merger m a b c = (a,b) -> m c
+type Merger m a b c = Kleisli m (a,b) c
 -- |A function with three inputs.
 -- |A function with a list of inputs.
-type ManyMerger m a b = [a] -> m b
+type ManyMerger m a b = Kleisli m [a] b
 
 -- |A parallel execution which has both local and
 --  global state (the computation may fail in certain
@@ -88,11 +88,14 @@ type ManyMerger m a b = [a] -> m b
 --  the computation is injective ---
 --  the result is a list of pairs (a,b), where a is the original
 --  input and b the value to which it was mapped.
+--
+--  This is the one data structure which (to my mind)
+--  is not simply an arrow.
 type ParPipe m a b c = [(a,b)] -> m [(a, m c)]
 
 -- |Wraps the return value of a function into a monad.
 liftP :: Monad m => (a -> b) -> Pipe m a b
-liftP = (return .)
+liftP = Kleisli . (return .)
 
 -- |The identity pipe.
 idP :: Monad m => Pipe m a a
@@ -103,31 +106,28 @@ idP = liftP id
      => Splitter m a b c
      -> (Pipe m b d, Pipe m c e)
      -> Splitter m a d e
-(<>) f (g,h) x = do (y,z) <- f x
-                    y' <- g y
-                    z' <- h z
-                    return (y',z')
+(<>) f (g,h) = f >>> first g >>> second h
 
 -- |Splits an input into a list and gives each list element to a handler.
 (<>*) :: Monad m
       => ManySplitter m a b
       -> Pipe m b c
       -> ManySplitter m a c
-(<>*) f g x = f x >>= mapM g
+(<>*) s p = Kleisli (runKleisli s >=> mapM (runKleisli p))
 
 -- |Takes a splitter and merges its outputs.
 (><) :: Monad m
      => Splitter m a b c
      -> Merger m b c d
      -> Pipe m a d
-(><) = (>=>)
+(><) = (>>>)
 
 -- |Lifts a pipe to a parPipe - applies the pipe to all
 --  elements of a list in parallel.
 mapPar :: Monad m
        => Pipe m b c
        -> ParPipe m a b c
-mapPar p = return . map (second p)
+mapPar p = return . map (second $ runKleisli p)
 
 -- |Lifts a function 'f : [b] -> [(b,c)]'
 --  (where the result consists of input-output-pairs) to a parPipe.
@@ -215,7 +215,7 @@ guard :: Monad m
       => (a -> Bool)
       -> Pipe m a a
       -> Pipe m a a
-guard f p x = if f x then return x else p x
+guard f p = Kleisli $ \x -> if f x then return x else runKleisli p x
 
 -- |Synonym for 'guard'.
 (??) :: Monad m
@@ -227,7 +227,7 @@ guard f p x = if f x then return x else p x
 -- |Induces a global failure that causes everything
 --  down the line to fail if a certain condition is met.
 failIf :: MonadPlus m => (a -> Bool) -> Pipe m a a -> Pipe m a a
-failIf f p x = if f x then mzero else p x
+failIf f p = Kleisli $ \x -> if f x then mzero else runKleisli p x
 
 -- |A variant of @failIf@ which inserts an error message in case of
 --  failure.
@@ -236,7 +236,8 @@ failIfEither :: Monad m =>
              -> String
              -> Pipe (EitherT String m) a a
              -> Pipe (EitherT String m) a a
-failIfEither f err p x = if f x then EitherT $ return $ Left err else p x
+failIfEither f err p = Kleisli $
+  \x -> if f x then EitherT $ return $ Left err else runKleisli p x
 
 -- |Inverse of 'failIf': only proceeds if a certain condition is
 --  met and induces a global failure otherwise.
@@ -251,8 +252,8 @@ copy =  liftP (id &&& id)
 --  auxiliary information that was previously added.
 flattenP :: (Monad m)
          => Pipe m (b, m c) (b,c)
-flattenP (x,y) = liftM (x,) y
+flattenP = Kleisli $ \(x,y) -> liftM (x,) y
 
 -- |Switches the outputs of a splitter.
-switch :: Monad m => Splitter m a b c -> Splitter m a c b
-switch = (<=<) $ liftP (\(x,y) -> (y,x))
+switch :: Monad m => Pipe m (a,b) (b,a)
+switch = liftP (\(x,y) -> (y,x))

@@ -74,7 +74,7 @@ pipeLib = [
       do asc <- askFor "Enter direction (Asc/Desc):" "Asc/Desc required!"
          let cmp = if asc == Asc then id else flip
              modtime x = getModificationTime (combine dir x)
-             sorter = mapPar (addInfoM modtime >=> flattenET)
+             sorter = mapPar (addInfoM modtime >>> flattenET)
                       =|> sortBy (cmp $ comparing snd)
                       =|> mapPar (liftP fst)
                       =|> liftParErase' id
@@ -86,7 +86,7 @@ pipeLib = [
       do start <- askFor "Enter start value (Integer): " "Start value required!" :: IO Integer
          let f = mapPar (splitExt >< liftP snd)
                  =|> addInfoG [start..]
-                 =|> mapPar (switch idP <> (liftP show, liftP id) >< addExt)
+                 =|> mapPar (switch <> (liftP show, liftP id) >< addExt)
          applyRenamings f files)
    ]
 
