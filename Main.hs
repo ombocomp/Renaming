@@ -4,17 +4,16 @@ module Main (main) where
 import System.Directory
 import Control.Monad
 import Control.Arrow
+import Control.Arrow.ParArrow
+import Control.Arrow.Utils
 import Data.Maybe
 import qualified Data.List as LS
-import Control.Monad.FunctionGraph
 import Data.Renaming
 import Data.Ord
 import System.IO
 import System.FilePath (combine)
 import Text.Read
 import qualified Algorithms.NaturalSort as NS (compare)
-
-import Control.Monad.Trans.Either
 
 data Asc = Asc | Desc deriving (Show, Eq, Ord, Read, Enum)
 
@@ -82,7 +81,7 @@ pipeLib = [
                       =|> addInfoG (map show ([1..]::[Integer]))
                       =|> mapPar (liftP $ \(e,n) -> (n++e))
          applyRenamings sorter files),
-   ("enumerate", \dir files ->
+   ("enumerate", \_ files ->
       do start <- askFor "Enter start value (Integer): " "Start value required!" :: IO Integer
          let f = mapPar (splitExt >< liftP snd)
                  =|> addInfoG [start..]
@@ -93,12 +92,12 @@ pipeLib = [
 
 -- For testing
 
--- |Runs a ParPipe and prints its results.
-runP :: (Show a, Show c) => ParPipe (EitherT String IO) a b c -> [(a,b)] -> IO ()
-runP p xs = do (Right xs') <- runEitherT $ p xs
-               mapM_ (f >=> print) xs'
-  where f (a,b) = runEitherT b >>= \(Right b') -> return (a,b')
+-- |Runs a ParArrow and prints its results.
+--runP :: (Show a, Show c) => ParArrow (EitherT String IO) a b c -> [(a,b)] -> IO ()
+--runP p xs = do (Right xs') <- runEitherT $ p xs
+--               mapM_ (f >=> print) xs'
+--  where f (a,b) = runEitherT b >>= \(Right b') -> return (a,b')
 
 -- |Fixes a pipe's monad to 'EitherT String IO' (for testing)
-eitherP :: ParPipe (EitherT String IO) a b c -> ParPipe (EitherT String IO) a b c
-eitherP = id
+--eitherP :: ParArrow (EitherT String IO) a b c -> ParArrow (EitherT String IO) a b c
+--eitherP = id

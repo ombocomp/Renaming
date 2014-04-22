@@ -28,12 +28,12 @@ module Data.Renaming (
    ) where
 
 import qualified Data.List as LS (sortBy)
---import Control.Applicative
-import Control.Monad.FunctionGraph
 import System.Directory
 import Control.Monad.Trans.Either
 import Control.Monad
 import Control.Arrow
+import Control.Arrow.ParArrow
+import Control.Arrow.Utils
 import Data.Maybe
 import System.FilePath (splitExtension)
 import Text.Read
@@ -56,23 +56,9 @@ isRight :: Either a b -> Bool
 isRight (Left _) = False
 isRight (Right _) = True
 
--- |Returns m True iff the EitherT-object has a right value.
-isRightT :: Monad m
-        => EitherT a m b
-        -> m Bool
-isRightT x = do x' <- runEitherT x
-                case x' of (Left _) -> return False
-                           _        -> return True
-
 -- |Extracts the right value from an Either.
 fromRight :: Either a b -> b
 fromRight (Right x) = x
-
--- |Extracts the right value from an EitherT.
-fromRightT :: Monad m
-          => EitherT a m b
-          -> m b
-fromRightT x = runEitherT x >>= (\(Right x') -> return x')
 
 -- |Turns a monadic function (e.g. a -> IO b) into one that returns EitherT.
 mkEitherT :: Monad m
@@ -129,27 +115,27 @@ addInfoM f = liftP (id &&& f)
 --  (such as a numbering).
 addInfoG :: (Monad m)
              => [c]
-             -> ParPipe (EitherT String m) a b (b, c)
+             -> ParArrow (EitherT String m) a b (b, c)
 addInfoG xs = liftPar' (`zip` xs)
 
 -- |Sorts a list of filenames.
 sortBy :: (Monad m)
        => (b -> b -> Ordering)
-       -> ParPipe (EitherT String m) a b b
+       -> ParArrow (EitherT String m) a b b
 sortBy f = liftPar' (LS.sortBy f)
 
 -- |Causes renaming failures in case of special filenames (. and ..).
 filterSpecialFiles :: (Monad m)
-                   => ParPipe (EitherT String m) a String String
+                   => ParArrow (EitherT String m) a String String
 filterSpecialFiles = mapPar $ failIfEither (`elem` special) "special character!" (liftP id)
    where special = [".", ".."]
 
--- |Applies a parPipe to a set of filenames,
+-- |Applies a ParArrow to a set of filenames,
 --  returning tuples of current and new filenames where
 --  the renaming was sucessful or appropriate error messages
 --  in the case of failures.
 applyRenamings :: Monad m
-              => ParPipe (EitherT String m) FilePath FilePath b
+              => ParArrow (EitherT String m) FilePath FilePath b
               -> [FilePath]
               -> m [(FilePath, Either String b)]
 applyRenamings p xs =
@@ -158,9 +144,9 @@ applyRenamings p xs =
                  Right ys -> sequence' ys
    where
       sequence' [] = return []
-      sequence' ((a,b):xs) = do b' <- runEitherT b
-                                xs' <- sequence' xs
-                                return ((a,b'):xs')
+      sequence' ((a,b):xs') = do b' <- runEitherT b
+                                 xs'' <- sequence' xs'
+                                 return ((a,b'):xs'')
 
 -- |Performs a series of file renamings. The first component of each
 --  tuple is the current filename, the second is the new one.
