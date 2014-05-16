@@ -7,13 +7,12 @@ import Control.Arrow
 import Control.Arrow.ParArrow
 import Control.Arrow.Utils
 import Control.Monad.State.Lazy
+import Console.REPL
 import Data.Maybe
 import qualified Data.List as LS
 import Data.Renaming
 import Data.Ord
-import System.IO
 import System.FilePath (combine)
-import Text.Read hiding (get)
 import qualified Algorithms.NaturalSort as NS (compare)
 
 data Asc = Asc | Desc deriving (Show, Eq, Ord, Read, Enum)
@@ -70,72 +69,6 @@ commandLib = [
       )
    ]
 
--- |Executes a REP loop until a given condition is met.
---  Variant of @repl'@ which performs the same input and output action
---  over and over again.
-repl' :: Monad m => (a -> Bool) -> m a -> (a -> m b) -> m ()
-repl' check f g = repl check (repeat f) (repeat g)
-
--- |Executes a REP loop until a given condition is met.
-repl :: Monad m
-     => (a -> Bool) -- |The check which, when true, terminates the loop.
-     -> [m a] -- |The list of inputs.
-     -> [a -> m b] -- |The list of functions operating on the input.
-     -> m ()
-repl check i o = sequenceWhile check $ zip i o
-  where sequenceWhile _ [] = return ()
-        sequenceWhile f ((inp,out):xs) =
-           do inp' <- inp
-              unless (f inp') $ do out inp'
-                                   sequenceWhile f xs
-
-{-
-main :: IO ()
-main =
-   do dir <- askForBy "Enter directory name: " "Directory not found!" doesDirectoryExist
-      files' <- getDirectoryContents dir
-      let files = LS.sortBy NS.compare files'
-      pipeName <- askForBy "Enter pipe name: " "Pipe not found!" (return .
-                                                                  isJust .
-                                                                  flip lookup pipeLib)
-      let pipe = fromJust $ lookup pipeName pipeLib
-      renamings <- pipe dir files
-      putStrLn "Proposed renamings: "
-      mapM_ (print' (maximum $ map length files)) renamings
-      proceed <- askFor "Proceed (True/False)? " "True/False required!"
-      let addDir = combine dir *** liftM (combine dir)
-      if proceed then renameFiles (map addDir renamings) >> putStrLn "Finished."
-      else putStrLn "Exiting without action."
-
--}
-
-print' :: Int -> (String, Either String String) -> IO ()
-print' n (old, new) = putStrLn $ padRight n old ++ "-->" ++ show new
-
-askFor :: Read a => String -> String -> IO a
-askFor prompt err = askForBy' prompt err (const (return True))
-
-askForBy' :: Read a => String -> String -> (a -> IO Bool) -> IO a
-askForBy' prompt err check = do
-   x <- putPrompt prompt
-   case readMaybe x of
-      Just x' -> do isValid <- check x'
-                    if isValid then return x'
-                    else putStrLn err >> askForBy' prompt err check
-      Nothing -> putStrLn err >> askForBy' prompt err check
-
-askForBy :: String -> String -> (String -> IO Bool) -> IO String
-askForBy prompt err check = do
-   x <- putPrompt prompt
-   isValid <- check x
-   if isValid then return x
-   else putStrLn err >> askForBy prompt err check
-
-putPrompt :: String -> IO String
-putPrompt prompt = putStr prompt >> hFlush stdout >> getLine
-
-padRight :: Int -> String -> String
-padRight n xs = xs ++ replicate (n - length xs) ' '
 
 pipeLib :: [(String, String -> [String] -> IO [(String, Either String String)])]
 pipeLib = [
@@ -164,6 +97,15 @@ pipeLib = [
          applyRenamings f files)
    ]
 
+-- |Prints a pair of old/new filenames, with a given length
+--  to which to pad.
+print' :: Int -> (String, Either String String) -> IO ()
+print' n (old, new) = putStrLn $ padRight n old ++ "-->" ++ show new
+
+-- |Pads a string with characters to its right until the given length
+--  is reached.
+padRight :: Int -> String -> String
+padRight n xs = xs ++ replicate (n - length xs) ' '
 
 
 -- For testing
