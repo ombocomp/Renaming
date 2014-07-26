@@ -8,6 +8,7 @@ import Control.Arrow.ParArrow
 import Control.Arrow.Utils
 import Control.Monad.State.Lazy
 import Console.REPL
+import Data.Char
 import Data.Maybe
 import qualified Data.List as LS
 import Data.Renaming
@@ -26,75 +27,98 @@ main = getCurrentDirectory >>= evalStateT main'
     main' = repl' isExitCommand (liftIO $ putPrompt "> ") runCommand
 
     runCommand c = fromMaybe (liftIO $ putStrLn "Command not found. Type :help for a list of commands.")
-                             (lookup c commandLib)
+                             (lookup c (remDesc commandLib))
 
     isExitCommand = (`elem` exitCommands) . trim
       where exitCommands = [":e", ":exit", ":quit", ":q"]
 
     trim = unwords . words
 
+-- |Removes the second field (description) from a command/pipe library.
+remDesc = map (\(n,_,a) -> (n,a))
 
-commandLib :: [(String, AppState)]
+type CmdName = String
+type CmdDesc = String
+
+-- |The library of CLI commands.
+--  Every command has a name, a description, and an action which
+--  performs IO and modifies the global state.
+commandLib :: [(CmdName, CmdDesc, AppState)]
 commandLib = [
-   (":help", do liftIO $ putStrLn "Renamer"
-                liftIO $ putStrLn "Commands: :cd, :pipe, :exit"
-                dir <- get
-                liftIO $ putStrLn $ "Current directory: " ++ dir
+   (":help", "Princts this help message.",
+    do liftIO $ putStrLn "Renamer"
+       liftIO $ putStrLn "Commands:"
+       liftIO $ mapM_ (\(n,d,_) -> putStrLn $ n ++ " - " ++ d) commandLib
+       dir <- get
+       liftIO $ putStrLn $ "Current directory: " ++ dir
    ),
-   -- Change current directory
-   (":cd", do dir <- liftIO $ askForBy "Enter new directory: "
-                                       "Directory not found!"
-                                       doesDirectoryExist
-              put dir
+   (":cd", "Change the current directory.",
+    do dir <- liftIO $ askForBy "Enter new directory: "
+                       "Directory not found!"
+                       doesDirectoryExist
+       put dir
    ),
-   -- Run a pipe
-   (":pipe", do dir <- get
-                liftIO (
-                  do files' <- getDirectoryContents dir
-                     let files = LS.sortBy NS.compare files'
-                     pipeName <- askForBy "Enter pipe name: "
-                                          "Pipe not found!"
-                                          (return
-                                           . isJust
-                                           . flip lookup pipeLib)
-                     let pipe = fromJust $ lookup pipeName pipeLib
-                     renamings <- pipe dir files
-                     putStrLn "Proposed renamings: "
-                     mapM_ (print' (maximum $ map length files)) renamings
-                     proceed <- askFor "Proceed (True/False)? " "True/False required!"
-                     let addDir = combine dir *** liftM (combine dir)
-                     if proceed then do renameFiles (map addDir renamings)
-                                        putStrLn "Finished."
-                                else putStrLn "Didn't do anything.")
-      )
+   (":pipe", "Run a pipe.",
+    do dir <- get
+       liftIO (do files' <- getDirectoryContents dir
+                  let files = LS.sortBy NS.compare files'
+                  pipeName <- askForBy "Enter pipe name: "
+                                       "Pipe not found!"
+                                       (return
+                                        . isJust
+                                        . flip lookup (remDesc pipeLib))
+                  let pipe = fromJust $ lookup pipeName (remDesc pipeLib)
+                  renamings <- pipe dir files
+                  putStrLn "Proposed renamings: "
+                  mapM_ (print' (maximum $ map length files)) renamings
+                  proceed <- askFor "Proceed (True/False)? " "True/False required!"
+                  let addDir = combine dir *** liftM (combine dir)
+                  if proceed then do renameFiles (map addDir renamings)
+                                     putStrLn "Finished."
+                             else putStrLn "Didn't do anything.")
+   ),
+   (":list", "Lists all pipes",
+    let pr (n,d,_) = putStrLn $ n ++ " - " ++ d  
+    in liftIO $ mapM_ pr pipeLib)
    ]
 
+type PipeName = String
+type PipeDesc = String
+type PipeAction = String -> [String] -> IO [(String, Either String String)]
 
-pipeLib :: [(String, String -> [String] -> IO [(String, Either String String)])]
+-- |The library of available pipes.
+--  Every pipe has a name, a description, and an action,
+--  which is a ParPipe, specialized to Strings with the IO and Either
+--  monads.
+pipeLib :: [(PipeName, PipeDesc, PipeAction)]
 pipeLib = [
-   ("addN", \_ files ->
-      do amount <- askFor "Enter amount: " "Integer required!"
-         let f = mapPar $ mapInt (+amount)
-         applyRenamings f files),
-   ("renameCD", const $ applyRenamings (mapPar $ mapName (take 2))),
-   ("sortByDate", \dir files ->
-      do asc <- askFor "Enter direction (Asc/Desc):" "Asc/Desc required!"
-         let cmp = if asc == Asc then id else flip
-             modtime x = getModificationTime (combine dir x)
-             sorter = mapPar (addInfoM modtime >>> flattenET)
-                      =|> sortBy (cmp $ comparing snd)
-                      =|> mapPar (liftP fst)
-                      =|> liftParErase' id
-                      =|> mapPar (splitExt >< liftP snd)
-                      =|> addInfoG (map show ([1..]::[Integer]))
-                      =|> mapPar (liftP $ \(e,n) -> (n++e))
-         applyRenamings sorter files),
-   ("enumerate", \_ files ->
-      do start <- askFor "Enter start value (Integer): " "Start value required!" :: IO Integer
-         let f = mapPar (splitExt >< liftP snd)
-                 =|> addInfoG [start..]
-                 =|> mapPar (switch <> (liftP show, liftP id) >< addExt)
-         applyRenamings f files)
+   ("addN", "Adds a number to numeric file names.",
+    \_ files -> do amount <- askFor "Enter amount: " "Integer required!"
+                   let f = mapPar $ mapInt (+amount)
+                   applyRenamings f files),
+   ("getNumber", "Extracts the first number from a filename.",
+    \_ files -> do let f = mapPar $ mapName (filter isDigit)
+                   applyRenamings f files),
+   ("renameCD", "Renames all files to 01.ext,02.ext,...",
+    const $ applyRenamings (mapPar $ mapName (take 2))),
+   ("sortByDate", "Sorts the files by modification date and names them 1.ext,2.ext,...",
+    \dir files -> do asc <- askFor "Enter direction (Asc/Desc):" "Asc/Desc required!"
+                     let cmp = if asc == Asc then id else flip
+                         modtime x = getModificationTime (combine dir x)
+                         sorter = mapPar (addInfoM modtime >>> flattenET)
+                                  =|> sortBy (cmp $ comparing snd)
+                                  =|> mapPar (liftP fst)
+                                  =|> liftParErase' id
+                                  =|> mapPar (splitExt >< liftP snd)
+                                  =|> addInfoG (map show ([1..]::[Integer]))
+                                  =|> mapPar (liftP $ \(e,n) -> (n++e))
+                     applyRenamings sorter files),
+   ("enumerate", "Takes a number n an names all files n.ext,(n+1).ext,...",
+    \_ files -> do start <- askFor "Enter start value (Integer): " "Start value required!" :: IO Integer
+                   let f = mapPar (splitExt >< liftP snd)
+                           =|> addInfoG [start..]
+                           =|> mapPar (switch <> (liftP show, liftP id) >< addExt)
+                   applyRenamings f files)
    ]
 
 -- |Prints a pair of old/new filenames, with a given length
