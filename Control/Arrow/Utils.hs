@@ -98,7 +98,7 @@ guard :: Monad m
       => (a -> Bool)
       -> Pipe m a a
       -> Pipe m a a
-guard f p = Kleisli $ \x -> if f x then return x else runKleisli p x
+guard f p = Kleisli $ \x -> if f x then runKleisli p x else return x
 
 -- |Synonym for 'guard'.
 (??) :: Monad m
