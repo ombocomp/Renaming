@@ -35,6 +35,7 @@ main = getCurrentDirectory >>= evalStateT main'
     trim = unwords . words
 
 -- |Removes the second field (description) from a command/pipe library.
+remDesc :: [(a,b,c)] -> [(a,c)]
 remDesc = map (\(n,_,a) -> (n,a))
 
 type CmdName = String
@@ -97,7 +98,8 @@ pipeLib = [
                    let f = mapPar $ mapInt (+amount)
                    applyRenamings f files),
    ("getNumber", "Extracts the first number from a filename.",
-    \_ files -> do let f = mapPar $ mapName (filter isDigit)
+    \_ files -> do let f = mapPar $ mapName (takeWhile isDigit
+                                             . dropWhile (not . isDigit))
                    applyRenamings f files),
    ("renameCD", "Renames all files to 01.ext,02.ext,...",
     const $ applyRenamings (mapPar $ mapName (take 2))),
