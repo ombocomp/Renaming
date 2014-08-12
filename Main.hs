@@ -98,8 +98,12 @@ pipeLib = [
                    let f = mapPar $ mapInt (+amount)
                    applyRenamings f files),
    ("getNumber", "Extracts the first number from a filename.",
-    \_ files -> do let f = mapPar $ mapName (takeWhile isDigit
-                                             . dropWhile (not . isDigit))
+    \_ files -> do let getNum = takeWhile isDigit . dropWhile (not.isDigit)
+                       f = mapPar $ splitExt
+                                    <> (liftP getNum
+                                        >>> failIfEither null "No number found!" idP,
+                                        idP)
+                                    >< addExt
                    applyRenamings f files),
    ("renameCD", "Renames all files to 01.ext,02.ext,...",
     const $ applyRenamings (mapPar $ mapName (take 2))),
