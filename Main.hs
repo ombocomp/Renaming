@@ -79,7 +79,7 @@ commandLib = [
                              else putStrLn "Didn't do anything.")
    ),
    (":list", "Lists all pipes",
-    let pr (n,d,_) = putStrLn $ n ++ " - " ++ d  
+    let pr (n,d,_) = putStrLn $ n ++ " - " ++ d
     in liftIO $ mapM_ pr pipeLib)
    ]
 
@@ -102,6 +102,26 @@ pipeLib = [
                        f = mapPar $ splitExt
                                     <> (liftP getNum
                                         >>> failIfEither null "No number found!" idP,
+                                        idP)
+                                    >< addExt
+                   applyRenamings f files),
+   ("getNumberN", "Extracts the Nth number from a filename.",
+    \_ files -> do n <- askFor "Which number (0-based integer): " "Integer required!"
+                   let getNum :: String -> (String, String)
+                       getNum = (takeWhile isDigit &&& dropWhile isDigit) . dropWhile (not.isDigit)
+
+                       getNums :: String -> [String]
+                       getNums xs = case getNum xs of ([],[])   -> []
+                                                      (n, rest) -> n : getNums rest
+
+                       ind _ [] = Nothing
+                       ind n (x:xs) | n < 0  = Nothing
+                                    | n == 0 = Just x
+                                    | n > 0 = ind (n-1) xs
+
+                       f = mapPar $ splitExt
+                                    <> (liftP (fromMaybe [] . ind n . getNums)
+                                        >>> failIfEither null "No nth number found!" idP,
                                         idP)
                                     >< addExt
                    applyRenamings f files),
